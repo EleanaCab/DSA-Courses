@@ -1,0 +1,340 @@
+---
+title: "Homework 6"
+author: "Eleana Cabello"
+date: "10-26-2022"
+output: pdf_document
+documentclass: article
+geometry: margin = 1 in
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=80),tidy=TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(mice)
+library(tidyr)
+library(corrplot)
+library(outliers)
+library(rcompanion)
+library(EnvStats)
+library(SciViews)
+library(ggbiplot)
+library(MASS)
+library(ggfortify)
+library(pls)
+library(VIM)
+library(caret)
+library(earth)
+```
+
+Before assessing the quality of the data, the date attribute was turned into 3 attributes associated with the the year, month, and day of each session. Additionally, after reading the description of the variables newVisits and bounces it was found that 1 meant True while Na meant false. Therefore, Na values were turned into zeros. These two changes were done in order to make these variables more interpret able. 
+
+```{r}
+trainData = read.csv('Train.csv/Train.csv')
+
+#taking date variable and turning it into 3 variables for the year, month, and day
+trainData$year = as.numeric(substr(trainData$date, 1, 4))
+trainData$month = as.numeric(substr(trainData$date, 6, 7))
+trainData$day = as.numeric(substr(trainData$date, 9, 10))
+
+#Removing date variable
+trainData <- subset(trainData, select = -c(date))
+
+#After reading the description of the variables below, 1 meant true and Na meant false
+#Therefore changing to 0 for easier interpretability   
+trainData$newVisits[is.na(trainData$newVisits)] = 0
+trainData$bounces[is.na(trainData$bounces)] = 0
+
+```
+
+## Missing Values
+
+After checking for missing values it was found that only three attributes had missing values: adwordsClickInfo.page, adwordsClickInfo.isVideoAd, and pageviews. Attributes adwordsClickInfo.page and adwordsClickInfo.isVideoAd were found to have missing values when a medium other than cost-per-clicks (cpc) was used in a session. After looking into observations with missing values for pageviews no paterrn was found for their occurrence. 
+
+```{r}
+#checking how many missing values by each column
+colSums(is.na(trainData))
+
+#Subset of just variables with missing data 
+missingVals = subset(trainData, select = c(adwordsClickInfo.page, adwordsClickInfo.isVideoAd, pageviews))
+
+#Looking a missing patterns
+md.pairs(missingVals)
+md.pattern(missingVals)
+
+#adwordsClickInfo.page and adwordsClickInfo.isVideoAd are only not Na when cpc is the medium 
+unique(subset(trainData, !is.na(adwordsClickInfo.page))$medium)
+unique(subset(trainData, !is.na(adwordsClickInfo.isVideoAd))$medium)
+
+#trying to find pattern in page views for missing values
+pageMissing = subset(trainData, is.na(pageviews))
+#view(pageMissing)
+```
+Since the missing values found adwordsClickInfo.isVideoAd and adwordsClickInfo.page were associated with the lack of use of the cpc medium, Na values were turned into a new levels associated with this lack in medium. For adwordsClickInfo.isVideoAd, Na values were turned into 'NotVideoAd'. For adwordsClickInfo.page, Na values were turned into zeros. Missing values in pageviews were also converted into zeros. 
+
+```{r}
+trainData$adwordsClickInfo.isVideoAd[is.na(trainData$adwordsClickInfo.isVideoAd)] = 'NotVideoAd'
+trainData$adwordsClickInfo.page[is.na(trainData$adwordsClickInfo.page)] = 0
+trainData$pageviews[is.na(trainData$pageviews)] = 0
+```
+
+## Correlation 
+
+```{r}
+numericData = select_if(trainData, is.numeric)
+
+#colSums(is.na(numericData))
+
+corPear = cor(numericData)
+heatmap(corPear)
+
+corSpear = cor(numericData, method = 'spearman')
+heatmap(corSpear)
+
+#Attempted but kept crashing r session
+# corKen = cor(numericData, method = 'kendall')
+# heatmap(corKen)
+
+corrplot::corrplot(corPear, title = 'Pearson')
+corrplot::corrplot(corSpear, title = 'Spearman')
+```
+```{r}
+categoricalData = select_if(trainData, negate(is.numeric))
+
+cols = c('channelGrouping', 'browser', 'operatingSystem', 'deviceCategory', 'continent', 'subContinent', 'country', 'region', 'metro', 'city', 'networkDomain', 'topLevelDomain', 'campaign', 'source', 'medium', 'keyword', 'referralPath', 'adContent', 'adwordsClickInfo.slot', 'adwordsClickInfo.gclId', 'adwordsClickInfo.adNetworkType', 'adwordsClickInfo.isVideoAd')
+categoricalData[cols] <- lapply(categoricalData[cols], as.factor)
+categoricalData[cols] <- lapply(categoricalData[cols], as.numeric)
+```
+
+```{r}
+corPear = cor(categoricalData)
+heatmap(corPear)
+
+corSpear = cor(categoricalData, method = 'spearman')
+heatmap(corSpear)
+
+corrplot::corrplot(corPear)
+corrplot::corrplot(corSpear)
+```
+```{r}
+numTrainData = data.frame(c(numericData, categoricalData))
+
+corPear = cor(numTrainData)
+heatmap(corPear)
+
+corSpear = cor(numTrainData, method = 'spearman')
+heatmap(corSpear)
+
+corrplot::corrplot(corPear)
+corrplot::corrplot(corSpear)
+```
+
+## Outliers
+
+
+```{r}
+ggplot(numTrainData, aes(x = revenue)) + geom_histogram()
+
+ggplot(numTrainData, aes(sample = revenue)) + stat_qq() + stat_qq_line()
+
+ggplot(numTrainData, aes(x = custId ,y = revenue)) + geom_point()
+
+grubbs.test(numTrainData$revenue)
+```
+
+## Semantic Errors
+```{r}
+#Some regions do not belong in the US 
+unique(subset(trainData, country == c('United States'))$region)
+
+#In addition to region being incorrect so is city and the same values as the region 
+trainData[trainData$country == 'United States' & trainData$region == c('Mexico City'), ]
+
+#Checking Canada for similar mistake
+unique(subset(trainData, country == c('Canada'))$region)
+
+#And Mexico 
+unique(subset(trainData, country == c('Mexico'))$region)
+```
+
+## Transformation of the Revenue variable
+```{r}
+#Ordering df by custId  and date of session
+numTrainData =  numTrainData[order(numTrainData$custId, numTrainData$year, numTrainData$month, numTrainData$day),]
+
+#Adding column of their cumulative revenue
+numTrainData$custRev = as.numeric(unlist(tapply(numTrainData$revenue, numTrainData$custId, cumsum)))
+
+#transformation of the revenue variable
+numTrainData$targetRev = log(numTrainData$custRev + 1)
+
+#removing revenue and custRev from df
+numTrainData = subset(numTrainData, select = -c(revenue, custRev))
+
+#Removing dupilcate custIds
+numTrainData =  numTrainData[order(numTrainData$custId, numTrainData$year, numTrainData$month, numTrainData$day, decreasing = TRUE),]
+numTrainData = numTrainData[!duplicated(numTrainData$custId), ]
+
+```
+
+## Distribution after transformation 
+```{r}
+ggplot(numTrainData, aes(x = targetRev)) + geom_histogram()
+
+ggplot(numTrainData, aes(sample = targetRev)) + stat_qq() + stat_qq_line()
+
+```
+
+## PCA
+```{r}
+pc = prcomp(numTrainData,scale = TRUE)
+summary(pc)
+pc$rotation
+```
+```{r}
+ggbiplot::ggbiplot(pc)
+```
+
+## OLS MODEL W/ CV
+```{r}
+set.seed(50)
+ 
+train_control = trainControl(method = "cv", number = 10)
+
+ols_model = train(targetRev ~., data = numTrainData, method = "lm", trControl = train_control)
+ 
+print(ols_model)
+```
+
+```{r}
+set.seed(50)
+ 
+train_control_cv = trainControl(method = "cv", number = 10)
+
+train_control_boot = trainControl(method = "boot", number = 10)
+
+ols_model_cv = train(targetRev ~., data = subset(numTrainData, select = -c(adwordsClickInfo.isVideoAd, custId)), method = "lm", trControl = train_control_cv)
+ 
+print(ols_model_cv)
+
+```
+
+```{r}
+ols_model_boot = train(targetRev ~., data = subset(numTrainData, select = -c(adwordsClickInfo.isVideoAd, custId)), method = "lm", trControl =  trainControl(method = "boot", number = 3))
+
+print(ols_model_boot)
+```
+
+
+## PLS Model
+
+```{r}
+pls_model_cv = train(targetRev ~., data = numTrainData, method = "pls", trControl = train_control_cv, preProcess = c("center", "scale"), tuneLength = 36)
+ 
+print(pls_model_cv)
+```
+
+```{r}
+pls_model_boot = train(targetRev ~., data = numTrainData, method = "pls", trControl = train_control_boot, preProcess = c("center", "scale"), tuneLength = 36)
+ 
+print(pls_model_boot)
+```
+```{r}
+ggplot(pls_model_cv)
+ggplot(pls_model_boot)
+
+rsquaredVals= data.frame(ncomp_cv = pls_model_cv$results$ncomp, rsquared_cv = pls_model_cv$results$Rsquared, ncomp_boot = pls_model_boot$results$ncomp, rsquared_boot = pls_model_boot$results$Rsquared)
+
+ggplot(rsquaredVals) + geom_point(aes(x = ncomp_cv, y = rsquared_cv), color = "red") + geom_line(aes(x = ncomp_cv, y = rsquared_cv), color = "red") + geom_point(aes(x = ncomp_boot, y= rsquared_boot), color = "blue") + geom_line(aes(x = ncomp_boot, y= rsquared_boot), color = "blue") + labs(x = 'ncomp', y = 'R^2')
+
+```
+
+## PCR
+```{r}
+pcr_model_cv = train(targetRev ~., data = numTrainData, method = "pcr", trControl = train_control_cv, preProcess = c("center", "scale"), tuneLength = 36)
+ 
+print(pcr_model_cv)
+```
+
+```{r}
+pcr_model_boot = train(targetRev ~., data = numTrainData, method = "pcr", trControl = train_control_boot, preProcess = c("center", "scale"),tuneLength = 36)
+ 
+print(pcr_model_boot)
+```
+
+```{r}
+ggplot(pcr_model_cv)
+ggplot(pcr_model_boot)
+
+rsquaredVals= data.frame(ncomp_cv = pcr_model_cv$results$ncomp, rsquared_cv = pcr_model_cv$results$Rsquared, ncomp_boot = pcr_model_boot$results$ncomp, rsquared_boot = pcr_model_boot$results$Rsquared)
+
+ggplot(rsquaredVals) + geom_point(aes(x = ncomp_cv, y = rsquared_cv), color = "red") + geom_line(aes(x = ncomp_cv, y = rsquared_cv), color = "red") + geom_point(aes(x = ncomp_boot, y= rsquared_boot), color = "blue") + geom_line(aes(x = ncomp_boot, y= rsquared_boot), color = "blue") + labs(x = 'ncomp', y = 'R^2')
+
+```
+
+## Ridge Regression
+```{r}
+ridgereg_model_cv = train(targetRev ~., data = numTrainData, method = "glmnet", trControl = train_control_cv, tuneGrid = expand.grid(alpha = 0, lambda = seq(0,1,0.01)), preProcess = c("center", "scale"))
+
+print(ridgereg_model_cv)
+```
+
+```{r}
+ggplot(ridgereg_model_cv)
+```
+
+```{r}
+ridgereg_model_boot = train(targetRev ~., data = numTrainData, method = "glmnet", trControl = train_control_boot, tuneGrid = expand.grid(alpha = 0, lambda = seq(0,1,0.01)), preProcess = c("center", "scale"))
+ 
+print(ridgereg_model_boot)
+```
+
+## MARS
+```{r}
+mars_model_cv = earth(targetRev ~., data = numTrainData, degree = 10, thresh = 0.001, nfold = 10)
+print(mars_model_cv)
+```
+
+## Testing Data
+```{r}
+testData = read.csv('Test.csv/Test.csv')
+testData$year = as.numeric(substr(testData$date, 1, 4))
+testData$month = as.numeric(substr(testData$date, 6, 7))
+testData$day = as.numeric(substr(testData$date, 9, 10))
+testData = subset(testData, select = -c(date))
+
+testData$newVisits[is.na(testData$newVisits)] = 0
+testData$bounces[is.na(testData$bounces)] = 0
+
+testData$adwordsClickInfo.isVideoAd[is.na(testData$adwordsClickInfo.isVideoAd)] = 'NotVideoAd'
+testData$adwordsClickInfo.page[is.na(testData$adwordsClickInfo.page)] = 0
+
+cols = c('channelGrouping', 'browser', 'operatingSystem', 'deviceCategory', 'continent', 'subContinent', 'country', 'region', 'metro', 'city', 'networkDomain', 'topLevelDomain', 'campaign', 'source', 'medium', 'keyword', 'referralPath', 'adContent', 'adwordsClickInfo.slot', 'adwordsClickInfo.gclId', 'adwordsClickInfo.adNetworkType', 'adwordsClickInfo.isVideoAd')
+testData[cols] = lapply(testData[cols], as.factor)
+testData[cols] = lapply(testData[cols], as.numeric)
+
+testData$pageviews[is.na(testData$pageviews)] = 0
+
+testData =  testData[order(testData$custId, testData$year, testData$month, testData$day, decreasing = TRUE),]
+testData = testData[!duplicated(testData$custId), ]
+
+```
+
+```{r}
+
+predictions_ols <- ols_model_cv %>% predict(testData)
+
+hist(predictions_ols)
+
+predictions = data.frame(custId = testData$custId, predRevenue = predictions_ols)
+
+colSums(is.na(predictions))
+
+#write.csv(ols_predictions,'ols_preds.csv', row.names = FALSE)
+```
+

@@ -1,0 +1,227 @@
+---
+title: "Homework 3"
+author: "Eleana Cabello"
+date: "09-15-2022"
+output: pdf_document
+documentclass: article
+geometry: margin = 1 in
+---
+
+## Glass Data
+
+### Part a
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+
+#Text wrapping for code sections
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=80),tidy=TRUE)
+
+#Libraries used 
+library(mlbench)
+library(tidyverse)
+library(geometry)
+library(corrplot)
+library(ggfortify)
+library(MASS)
+library(ggbiplot)
+library(dplyr)
+library(devtools)
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+
+#Importing glass data frame
+data(Glass)
+
+#Running the line below reveals row 40 is a duplicate of row 39
+duplicated(Glass)
+
+#Removes duplicate rows
+Glass %>% distinct()
+```
+
+i. Correlation matrix of the Glass data set. 
+```{r}
+corMat <- cor(x = Glass[,1:9])
+corMat
+
+```
+
+ii. Eigenvalues and eigenvectors of the data set. 
+```{r}
+eigenVals_Vecs <- eigen(corMat)
+eigenVals_Vecs
+```
+iii. Principle component analysis of the Glass data set. 
+```{r}
+prinComp <- prcomp(Glass[, 1:9], scale. = TRUE)
+prinComp
+```
+
+iv. The eigenvectors and principal components seem to be equal in magnitude but different in their direction. However, based on our groups personal learning these vectors should be the same. 
+
+v. Proving components 1 and 2 are orthogonal. 
+```{r}
+
+dotProd <- dot(prinComp$rotation[,1], prinComp$rotation[,2])
+
+dotProd
+
+```
+The dot product of the two principle components is essentially zero proving they are orthogonal. 
+
+### Part b
+
+i. Correlation plot of the correlation matrix. 
+```{r}
+corrplot(corMat, method = 'circle', order = 'AOE')
+```
+ii. Biplot of components 1 and 2. 
+```{r}
+#Visual representation of principle components 1 vs 2.
+ggbiplot(prinComp, choices = 1:2, groups = Glass$Type)
+```
+
+iii. Together principle components 1 and 2 explain about 50.70% of the variance in the original data. Component 1 has notable negative associations with CA and RI. It also has notable positive associations with Ba, Na, and Al. Component 2 has a large negative association with Mg. These two components were not able to separate or distinguish glass types very well. There is still severe overlap between some groups. 
+
+iv. Based on the results above, we do not believe the data can be reduced with PCA while still preserving the variance in the data. PCA is not the ideal dimension reduction method for this data set. PCA's ineffectiveness in dimension reduction for the glass data set could be due to the fact that PCA does not consider the class label or outliers in the data that were not addressed. 
+
+### Part c
+i. Linear discriminant analysis of the Glass data set. 
+```{r}
+ldaAnalysis <- lda(x = Glass[, 1:9], grouping = Glass$Type)
+ldaAnalysis
+```
+
+ii. Linear discriminate 1 was able to achieve 81.45% separation between the types of glass. 
+
+```{r}
+pred <- predict(ldaAnalysis, Glass[, 1:9])
+par(mar = c(1, 4, 1, 4))
+ldahist(data = pred$x[,1], g = Glass$Type)
+ldahist(data = pred$x[,2], g = Glass$Type)
+```
+iii. Based on the histograms above it is easy to see that linear discriminant 1 is able to separate the 6 types of glass effectively. There is small overlap between some of the classes histograms but overall each type falls in range associated with its class. The scatter plot below can also be used to visualize this separation. For discriminant 2, the histograms of the types of glass lie in similar regions with one another making it hard to distinguish them. 
+
+## Principal Components for Dimension Reduction
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(HSAUR2)
+library(outliers)
+library(dplyr)
+library(devtools)
+library(gridExtra)
+library(ggplot2)
+library(ggbiplot)
+```
+
+### Part a
+
+```{r}
+
+data(heptathlon)
+
+#All events were examined using the grubbs test. The following below are the results that were significant with a p-value above 0.05.
+
+grubbs.test(heptathlon[,1]) #hurdles 
+grubbs.test(heptathlon[,2]) #highjump
+grubbs.test(heptathlon[,5]) #longjump
+grubbs.test(heptathlon[,7]) #run800m
+grubbs.test(heptathlon[,8]) #Score
+
+#Removing Launa (PNG) from data frame.
+heptathlon <- heptathlon[!(row.names(heptathlon) %in% c("Launa (PNG)")),]
+
+```
+
+### Part b
+
+```{r}
+heptathlon$hurdles = max(heptathlon[,1]) - heptathlon$hurdles
+
+heptathlon$run200m = max(heptathlon[,4]) - heptathlon$run200m
+
+heptathlon$run800m = max(heptathlon[,7]) - heptathlon$run800m
+```
+
+### Part c
+
+```{r}
+Hpca <- prcomp(heptathlon[,1:7], scale. = TRUE, center = TRUE)
+Hpca
+```
+
+### Part d
+
+```{r}
+ggbiplot(Hpca, choices = 1:2)
+```
+Principal components 1 and 2 shown above are able to explain 80.80% of the variance in the original data. Component 1 has positive associations with the hurdles, run200m, and run800m event results. It also has some large negative associations with the highjump, long jump, and shot event results. Component 2 has a large negative association with the javelin event results. 
+
+### Part e
+
+```{r}
+
+comp_1 <- ggplot(heptathlon) + geom_point(mapping = aes(x = score , y = Hpca$x[,1]))
+comp_2 <- ggplot(heptathlon) + geom_point(mapping = aes(x = score , y = Hpca$x[,2]))
+comp_3 <- ggplot(heptathlon) + geom_point(mapping = aes(x = score , y = Hpca$x[,3]))
+comp_4 <- ggplot(heptathlon) + geom_point(mapping = aes(x = score , y = Hpca$x[,4]))
+comp_5 <- ggplot(heptathlon) + geom_point(mapping = aes(x = score , y = Hpca$x[,5]))
+comp_6 <- ggplot(heptathlon) + geom_point(mapping = aes(x = score , y = Hpca$x[,6]))
+comp_7 <- ggplot(heptathlon) + geom_point(mapping = aes(x = score , y = Hpca$x[,7]))
+
+grid.arrange(comp_1, comp_2, comp_3, comp_4, comp_5, comp_6, comp_7, nrow = 3)
+
+```
+Component 1 seems to have the strongest association between it and the overall score of participants. There also seems to be significant negative association between component 2 and the overall score of participants. However, all other components seem to have no clear or significant correlations in their plots. 
+
+##Housing data dimension reduction and exploration
+
+```{r}
+library(dplyr)
+library(tidyverse)
+
+hd <- read.csv("housingData.csv") %>%
+select_if(is.numeric) %>%
+dplyr::mutate(age = YrSold - YearBuilt,
+ageSinceRemodel = YrSold - YearRemodAdd,
+ageofGarage = ifelse(is.na(GarageYrBlt), age, YrSold - GarageYrBlt)) %>%
+dplyr::select(!c(Id,MSSubClass, LotFrontage, GarageYrBlt,
+MiscVal, YrSold , MoSold, YearBuilt,YearRemodAdd, MasVnrArea))
+```
+
+
+###PCA of the entire housing data set
+```{r}
+# PCA of the entire housing data frame 
+pc <- prcomp(hd[,], scale = TRUE)
+summary(pc)
+
+#Correlation matrix for the entire data frame 
+cMat <- cor(hd[,])
+
+#Heatmap of the correlation map 
+heatmap(cor(hd[,]))
+
+#Correlation plot of the data frame 
+corrplot(cMat, method = 'ellipse', type = 'upper')
+
+```
+
+###PCA of a subset of the housing data
+```{r}
+#PCA of the first 5 variables of the data set: LotArea, OverallQual, OverallCond, BsmtFinSF1, BsmtFinSF2  
+pc <- prcomp(hd[,1:5], scale = TRUE)
+summary(pc)
+
+#Correlation matrix of the subset
+c2Mat <- cor(hd[,1:5])
+
+#Correlation plot of the subset based on the correlation matrix
+corrplot(c2Mat, method = 'ellipse', type = 'upper')
+
+#Plot of the principal components 1 and 2  
+ggbiplot(pc)
+ggbiplot(pc,obs.scale = 1, var.scale = 1, varname.size = 4, labels.size=10, circle = TRUE)
+```
+Together components 1 and 2 explain about 49.3% of the variance in the original housing data. From the biplot created, we are not able to observe clear and strong varability between the variables. In conclusion, we were not able to find anything worthwhile or notable from this PCA analysis about the housing data. 
